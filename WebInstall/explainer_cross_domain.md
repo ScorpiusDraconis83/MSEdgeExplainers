@@ -10,16 +10,25 @@ This document is a starting point for engaging the community and standards bodie
 
 ##  Introduction
 
-Current paradigms of application discovery involve a user going to an application repository to search and install apps. These repositories are generally curated and have a level of trust associated by the user. They play a vital role in allowing a user to acquire high quality apps. Application repositories are valuable because they help developers acquire users, which incentivises developers to create better apps on the web platform.
+As Web applications are becoming more ubiquitous, there are growing needs to aid discovery and distribution of said applications. **The Web Install API provides a way to democratise and decentralise web application acquisition**, by enabling ["do-it-yourself" developers to have control](https://www.w3.org/TR/ethical-web-principles/#control) over the application discovery and distribution process, providing them with the tools they need to allow a web site to install a web app.
 
-While this is the general acquisition flow on many platforms, the web does not have the ability to replicate this scenario because it can not install applications. This makes it impossible for a web app (repository, catalog, store) to install and distribute other applications.
+The acquisition of an web app can originate via multiple user flows that generally involve search, navigation, and ultimately trust that the UA will prompt or provide some sort of UX that support "[installing](https://web.dev/articles/install-criteria)/[adding](https://support.apple.com/en-gb/guide/safari/ibrw9e991864/mac)" the desired app. There are multiple use cases for this feature, as seen in the [use case](#use-cases) section, but *the core concept is the installation of a web app directly from a web page*.
 
-**The Web Install API** addresses this shortcoming in the platform. It **allows a web site to install a web app *([same](./explainer_same_domain.md) or **cross** origin)*. This functionality allows the creation of web based catalogs that can install PWAs directly from the web and into multiple platforms.**
+The current alternative to the Web Install API implies the user needs to rely on search engines, app stores, proprietary protocols, proprietary "smart" banners, UA prompts, hidden UX and other means that take the user out of their navigating context. They also represent additional steps towards the acquisition of the app.
+
+Inherently, these alternative user flows to "install" an app rely on multi-step processes that at best require a couple of clicks to navigate to an origin and install it, and at worst involve the user searching on browser menus for a way to add the app to their device. The web platform is not capable of providing a seamless, consistent experience that allows users to discover and acquire applications in a frictionless manner. Every additional step in the acquisition funnel for web apps comes with an additional drop off rate as well. 
+
+Moreover, the **Web Install API feature is beneficial for app discovery**: it allows developers to create their own acquisition mechanism and tailor it to benefit users that:
+* might not know that a web app exists for the current origin.
+* don't understand what the icon/prompt in the omnibox does.
+* don't know how to deep search several layers of browser UX to add the app to their devices.
+* don't use app stores to discover new app experiences.
+
 
 ## Goals
 
 * **Enable installation of web apps (cross-origin).**
-* Allow a ***vetted* installation origin** to know if the web app is installed (see *[`install_sources`](#install-sources-manifest-field) new manifest field*).
+
 * Allow the web app to report to the installation origin the outcome of the installation.
 * Enable UAs to [supress potential installation-prompt spam](#avoiding-installation-prompt-spamming).
 * Track campaign IDs for marketing campaigns (with the [Acquisition Info API](https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/AcquisitionInfo/explainer.md)).
@@ -27,138 +36,115 @@ While this is the general acquisition flow on many platforms, the web does not h
 ## Non-goals
 
 * Install same-origin content (see [Web Install - same-origin explainer](./explainer_same_domain.md)).
+* Install arbitrary web content that is not an app (target must have a manifest file and an `id` or `start_url`). [Reasons expanded here](https://docs.google.com/document/d/19dad0LnqdvEhK-3GmSaffSGHYLeM0kHQ_v4ZRNBFgWM/edit#heading=h.koe6r7c5fhdg).
 * Change the way the UA currently prompts for installation of a web app.
 * Associate ratings and reviews with the installed app ([see Ratings and Reviews API explainer](https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/RatingsAndReviewsPrompt/explainer.md)).
 * Process payments for installation of PWAs ([see Payment Request API](https://developer.mozilla.org/en-US/docs/Web/API/Payment_Request_API)).
 * List purchased/installed goods from a store ([see Digital Goods API](https://github.com/WICG/digital-goods/blob/main/explainer.md)).
 * Installing content that does not pass the installability criteria (see *[installability criteria](#installability-criteria)*).
+* Define what "installation" means. This is up to each platform and overall we refer to the acquisition of an app onto a device.
 
 ## Use Cases
 
-There are two main use cases that the Web Install API enables for cross-origin origins:
+The Web Install API enables installation of cross-origin web applications. A website will be able to include a button to install an application, which can be hosted in another domain. These are some examples of use cases enabled by the new API.
 
-### **Web app installation from associated domain**
+### **Websites installing their web apps**
 
-An (out-of-scope) origin associated to a web app could prompt for the installation of said web app. The typical use case for this is a marketing website that can offer their customers a direct way to install the associated web app.
+Picture a user browsing on their favorite video streaming web app. The user might browse to this web app daily, yet not be aware that there is a way that they can install the app directly from the app's UI. This could be through a button that the webapp would be able to implement, that would trigger the installation.
 
-As an example, a user can navigate to the `streamflix.com` website and find UX that allows them to install the associated application found in `streamflix.app`.
+The website can also provide a way to directly acquire other applications it might offer, like a dedicated "kids" version of the app, or a "sports" version of the app. The developer is in control and can effectively advertise and control their applications, which having to redirect users to platform-specific propriatery repositories, which is what happens now. 
 
-```javascript
-/* Example that uses the Permissions API to check if the installation permission is set before calling the install method */
-  const installApp = async () => {
-    try{
-        const { state } = await navigator.permissions.query({
-            name: "installation"
-          });
-          switch (state) {
-            case "granted":
-                const value = await navigator.install('https://streamflix.app');
-              break;
-            case "prompt":
-              showInstallButton();
-              break;
-            case "denied":
-              browseToAppStorePage();
-              break;
-          }
-    }
-    catch(err){console.error(err.message)}
-  };
-```
+### **SERP app install**
 
-Manifest file for the `streamflix.app`, allowing installation *ONLY* from `streamflix.com` :
-
-```json
-{
-    "name": "Streamflix App",
-    "display": "standalone",
-    "start_url": "/index.html",
-    "install_sources": [ 
-	    {"origin": "streamflix.com"}   
-    ]
-}
-```
-
-![Different domain install flow](./difdomaininstall.png) 
+Developers of Search Engines could use the API to include a way to directly install an origin that is an application. A new feature could be offered by search engines that could see them offering a frictionless way to acquire an app that a user is searching for. This could also aid discovery as a user might not be aware that a specific origin has an associated web application they could acquire.
 
 ### **Creation of online catalogs**
 
- The other use case for the API is related to the creation of online catalogs. A web site/app can list and install web apps. For example, `store.com` would be able to distribute apps on multiple platforms and multiple devices.
+ Another potential use case for the API is related to the creation of online catalogs. A web site/app can list and install web apps. A unique aspect of this approach is that since the applications that are installed are web apps, this could enable a new set of true cross-device, cross-platform app repositories.
 
 ```javascript
 /* tries to install a cross-origin web app */
 
-const installApp = async (manifest_id) => {
+const installApp = async (manifest_id, install_url) => {
     if ('install' in navigator === false) return; // api not supported
     try {
-            await navigator.install(manifest_id);
+        await navigator.install(manifest_id, install_url);
     } catch(err) {
-        switch(err.message){
+        switch(err.name){
             case 'AbortError':
                 /* Operation was aborted*/
                 break;
-           
+
         }
     }
 };
 ```
 
-  ![Install flow from an app repository](./apprepositoryinstallation.png) 
+  ![Install flow from an app repository](./apprepositoryinstallation.png)
 
 ## Proposed Solution
 
 ### The `navigator.install` method
 
-To install a web app, a web site would use the promise-based method `navigator.install([<manifest_id>[, <params>]]);`. This method will:
+To install a web app, a web site would use the promise-based method `navigator.install(<manifest_id>[, <install_url>[, <params>]]);`. This method will:
 
 * Resolve when an installation was completed.
     * The success value will be an object that contains:
-     	*  `mode`: string with the surface-hint where the app was installed.
+     	*  `manifest_id`: string with the computed `manifest_id` of the installed app.
 * Be rejected if the prompt is not shown or if the app installation did not complete. It'll reject with a [`DOMException`](https://developer.mozilla.org/en-US/docs/Web/API/DOMException) value of:
     * `AbortError`: The installation (prompt) was closed/cancelled.
 
 
-![Promises resolve/reject flow](./installPromises.png) 
-
+![Promises resolve/reject flow](./installPromises.png)
 
 #### **Signatures of the `install` method (cross-origin)**
 The cross-origin part of the Web Install API consists of the extension to the navigator interface with an `install` method. This method receives:
-* `manifest_id`: decalres the specific application to be installed. If the content to be installed is not content with a manifest, a `install_url` parameter can be specified.
+* `manifest_id`: declares the specific application to be installed. This is the unique id of the application that will be installed. This value must match the id specified in the manifest file.
+* `install_url`: a url meant for installing an app. This url can be any url in scope of the manifest file that links to it. An `install_url` must not redirect nor contain extra content that is not relevant for installation purposes.
 * optional [parameters](#parameters).
+
+If the `manifest_id` is the *what* to install, the `install_url` is the *where* to find it.
 
 Unless the UA decides to [gate this functionality behind installation](#gating-capability-behind-installation), the behaviour between calling the `install` method on a tab or on an installed application should not differ. The install method can be used in two different ways.
 
-1. `navigator.install(<manifest_id>)`: The method receives a parameter which is a [manifest id](https://w3c.github.io/manifest/#id-member) to a web app to install. This will prompt for installation of the app if the requesting origin has installation permissions (see [security section](#integration-with-the-permissions-api)). This is the most common use of the API.
+1. `navigator.install(manifest_id, <install_url> [, <params>])`: The method takes an id and install url and tries to install the web content at `install_url`. Installation will proceed if the following are true: a. The target web app links to a manifest. b. The target web app's manifest includes either an `id` or `start_url`. c. The `id` parameter matches the declared or resolved id of the target web app. This is the most common API use case the API for cross-origin scenarios.
 
-2. `navigator.install(<manifest_id>, <params>)`: This signature of the method includes the optional parameters. These parameters alter how the app is installed and are defined in an object. More information about the parameters is found in the [Parameters](#parameters) subsection of this specification.
+This will prompt for installation of the app if the requesting origin has installation permissions (see [security section](#integration-with-the-permissions-api)).
 
 #### **Parameters**
 
 The `navigator.install` call can receive an object with a set of parameters that specify different installation behaviours for the app. It is also a way to future-proof the API if additional data were required with the call.
-* **install_url**: Provides a url to install if the specified `manifest_id` can't be found. The UA can attempt to install this origin instead. 
-* **referral-info**: this parameter takes the form of an object that can have arbitrary information required by the calling installation domain. This information can later be retrieved inside the installed application via the [Acquisition Info API](https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/AcquisitionInfo/explainer.md). 
+* **referral-info**: this parameter takes the form of an object that can have arbitrary information required by the calling installation domain. This information can later be retrieved inside the installed application via the [Acquisition Info API](https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/AcquisitionInfo/explainer.md).
 
 #### **Installing the web app**
 
-To install a same domain web site/app, the process is as follows:
+To install a cross domain web site/app, the process is as follows:
 1. Origin site that triggers the installation must have installation permissions as it tries to install a cross-origin app.
-2. target site/app must comply with *[installability criteria](#installability-criteria), if any*.
-3. If the target content is a web app with a manifest, check if the domain is in the list of [allowed origins](#install-sources-manifest-field) to install said content. If the target content is not a web app, the UA may offer different UX that informs the user that the target might not integrate with the host OS.
-3. Prompt the user for install confirmation. User is given a choice about whether to install the target content or not.
-4. If the users accepts, the content is installed.
-5. UA default action post-install (generally the app will open/be added to homescreen/start menu/dock). 
- 
+2. Target site/app must comply with *[installability criteria](#installability-criteria), if any*.
+3. If the target content is not a web app, it can't be installed.
+4. Prompt the user for install confirmation. User is given a choice about whether to install the target content or not.
+5. If the users accepts, the content is installed.
+6. UA default action post-install (generally the app will open/be added to homescreen/start menu/dock).
+
 ### The `navigator.getInstalledApps` method
 
-If supported by the UA, the `getInstalledApps` method returns a list of the content that has been installed from that installation origin.** This means the installation origin will be able to know which applications it has installed, until cache is cleared. The installation origin *will not* be informed of any apps installed by other means, whether via another installation origin, directly through the browser, or by a native app store. The method returns a list of manifest ids of content installed from the calling origin. Additionally, if the browser has an active 'Do Not Track (DNT)', equivalent 'Global Privacy Control (GPC)' setting, is in Private browsing mode, or is an opinionated browser towards privacy, this is ignored and installation origins will not be allowed to know if that application is installed. 
+If supported by the UA, the `getInstalledApps` method returns a list of the content that has been installed from *that* installation origin which is still installed on the device at the time of execution. This is an **async** method of the `navigator` interface that allows the installation origin to know which applications it has installed.
 
-* The approach for showing which apps have been installed from this origin follows the same API approach where the information is accessible if it matches a [partition key](https://github.com/kyraseevers/Partitioning-visited-links-history#general-api-approach), instead of just the link URL. This ensures installed apps can be seen only from the origin matching all parts of the key. 
+This works until cache is cleared. The installation origin *will not* be informed of any apps installed by other means, whether via another installation origin, directly through the browser, or by a native app store. The method returns a list of manifest ids of content installed from the calling origin.
 
-## Relation with other web APIs/features 
+Additionally, if the browser has an active 'Do Not Track (DNT)', equivalent 'Global Privacy Control (GPC)' setting, is in Private browsing mode, or is an opinionated browser towards privacy, this is ignored and installation origins will not be allowed to know if that application is installed. In this case the `navigator.getInstalledApps` will return a `null`.
+
+* The approach for showing which apps have been installed from this origin follows the same API approach where the information is accessible if it matches a [partition key](https://github.com/kyraseevers/Partitioning-visited-links-history#general-api-approach), instead of just the link URL. This ensures installed apps can be seen only from the origin matching all parts of the key.
+
+## Relation with other web APIs/features
 
 * **`navigator.install` and Permissions API:** see [integrations with the Permissions API](#integration-with-the-permissions-api).
 
 * **`navigator.install` and manifest file's `prefer_related_applications`:** When the `related_applications` and `prefer_related_applications` key/values are present in the manifest, the UA should try to handoff the install to the prefered catalog. If this is not possible then it fallback to a default UA install.
+
+* **`navigator.getInstalledApps` and `getInstalledRelatedApps`:** `getInstalledApps` is called from an origin and can list applications that are installed on the device originating from the current site. `getInstalledRelatedApps` on the other hand is called from a web app and returns which alternate versions of an app (platform specific versions for example) are already installed on the device.
+    * `getInstalledApps` can be used to change install UX in online stores if an app is already installed (changing the text on a button from "Install" to "Open" for example).
+    * `getInstalledRelatedApps` can be used to "mute" notifications or hide install UI for a web application if an alternate version of the app is already installed (avoid duplicate notifications if a user has a web version and a platform-specific version of the same app for exmaple).
 
 * **`navigator.install` and `side-panel` display-mode:** Due to the evolving nature of web apps, there are different surfaces where these can be installed. If the target of `navigator.install` call has a manifest file with a `display_override` member that includes a [`side-panel` value](https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/SidePanel/explainer.md), this can hint to the UA that the app can be installed as a sidebar app if supported.
 
@@ -178,7 +164,7 @@ A user agent might decide to have only the requirement of HTTPS to allow install
 
 * This API can only be invoked in a top-level navigable and be invoked from a [secure context](https://w3c.github.io/webappsec-secure-contexts/).
 
-* The biggest risk for the API is installation spamming. To minimize this behaviour, installing a PWA using the Web Install API requires a [user activation](https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event).   
+* The biggest risk for the API is installation spamming. To minimize this behaviour, installing a PWA using the Web Install API requires a [user activation](https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event).
 
 * A new permission type will be introduced for an origin, that would allow it to install web apps. The first time a website requests to install an app (use the API) the UA will prompt the user to confirm that the website can install other apps into the device. This prompt is similar to that of other permissions like geolocation or camera/microphone. The UA can decide how to implement this prompt.
 
@@ -208,24 +194,6 @@ switch (state) {
     break;
 }
 ```
-####  **Install Sources manifest field**
-* A new field called `install_sources` will be added to the manifest file to have a control list of sites that can install the app. In its most restrictive case, the developer can specify to not allow installation from any other origin, in which case the PWA conforms to its usual behaviour of only being able to be installed from its same origin.
-
-```json
-{
-    "name": "Awesome PWA",
-    "display": "standalone",
-    "start_url": "/index.html",
-    "install_sources": [ 
-	    {"origin": "apps.microsoft.com"},
-	    {"origin": "store.app"}
-    ]
-}
-```
-
-This new manifest field will protect the app from being listed in undesirable repositories and give the developer absolute control about where do they want the PWA to be installed from. At best, the developer can allow the PWA to be installed from any site ("`*`"), at its most restrictive, it can only allow installing from the app's same scope. This field is only for the JS API and does not interfere with existing ways of installing PWAs through mechanisms like enterprise policies.
-
-If no `install_sources` are present in the manifest file, the default should be to not allow an app to be installed from cross-origin sites.
 
 #### **Gating capability behind installation**
 A UA may choose to gate the `navigator.install` capability behind a requirement that the installation origin itself is installed. This would serve as an additional trust signal from the user towards enabling the functionality.
@@ -243,6 +211,9 @@ A UA may choose to gate the `navigator.install` capability behind a requirement 
 
 * Can we remove power from the developer to query if the app is installed by offloading to the UA the knowledge of which apps are installed?
     * Is there any form of attribute that can be added to a DOM element to signal this distinction/difference?
+
+* Should `getInstalledApps` and `getInstalledRelatedApps` be merged together?
+    See [this issue](https://github.com/MicrosoftEdge/MSEdgeExplainers/issues/804).
 
 ## Glossary
 * **installation origin**: the origin that initiates the call to the `install` method.

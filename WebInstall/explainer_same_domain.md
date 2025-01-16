@@ -17,7 +17,7 @@ Modern browsers have UX that enable users to *install* web content on their devi
 ## Goals
 
 * **Enable installation of web apps (same-origin).**
-* Complement `beforeinstallprompt` for platforms that do not prompt.
+* Complement `beforeinstallprompt` for platforms that do not prompt for installation of web content.
 * Allow the web app to report to the installation origin the outcome of the installation.
 * Enable UAs to supress potential installation-prompt spam.
 
@@ -37,20 +37,21 @@ Modern browsers have UX that enable users to *install* web content on their devi
 ### **Installing a web app from the current origin**
 The site can trigger its own installation. 
 
-The current way of doing this is with the `onbeforeinstallprompt`. This only works for browsers that support PWAs and prompting. The `navigator.install` method allows a imperative way to install web content, and works for UAs that prompt and don't prompt.
+The current way of supporting installation is via the `onbeforeinstallprompt` event, which only works in browsers that have a prompting UI affordance. 
+
+The `navigator.install` method allows a imperative way to install web content, and works for UAs that prompt and don't prompt:
 
 ```javascript
-/* tries to install the current domain */
+/* tries to install the current document */
 const installApp = async () => {
-    if ('install' in navigator === false) return; // api not supported
+    if (!navigator.install) return; // api not supported
     try {
-            await navigator.install();
+        await navigator.install();
     } catch(err) {
-        switch(err.message){
+        switch(err.name){
             case 'AbortError':
                 /* Operation was aborted*/
                 break;
-           
         }
     }
 };
@@ -58,25 +59,25 @@ const installApp = async () => {
 
 ![Same domain install flow](./samedomaininstall.png) 
 
-The **`navigator.install()` method can overlap with some functionality of `beforeinstallprompt` for same-origin installation**. When the method is called it will trigger the UA to prompt for the installation of an application. This is analogous to when the end user clicks on an affordance that the UA might have to inform the user of installing. On Edge, Chrome (desktop) and Samsung Internet (mobile), this would be when the user clicks on the 'app available' banner or related UX that appears on the omnibox of the browser. For browsers that do not implement prompting, the expected behaviour is analogous to their installation paradigm. For example, in Safari (desktop) the behaviour might be that it shows a dialog to add the content to the dock as an app.
+The **`navigator.install` method can overlap with some functionality of `beforeinstallprompt` for same-origin installation**. When the method is called it will trigger the UA to prompt for the installation of an application. This is analogous to when the end user clicks on an affordance that the UA might have to inform the user of installing. On Edge, Chrome (desktop) and Samsung Internet (mobile), this would be when the user clicks on the 'app available' banner or related UX that appears on the omnibox of the browser. For browsers that do not implement prompting, the expected behaviour is analogous to their installation paradigm. For example, in Safari (desktop) the behaviour might be that it shows a dialog to add the content to the dock as an app.
 
-On UAs that support prompting, the threshold for `navigator.install()` to resolve on same-origin installations uses the same checks that `onbeforeinstallprompt` currently has for prompting (if required by the UA). The promise doesn't resolve unless the *installability criteria* is met. *Note that the criteria defined by UAs varies and can be that there is NO criteria*.
+On UAs that support prompting, the threshold for `navigator.install` to resolve on same-origin installations uses the same checks that `onbeforeinstallprompt` currently has for prompting (if required by the UA). The promise doesn't resolve unless the *installability criteria* is met. *Note that the criteria defined by UAs varies and can be that there is NO criteria aside from requiring an id in the site's manifest*.
 
-When called on the same domain, the **`install()` method will trigger/open the prompt for installation the same way that using `onbeforeinstallprompt` does right now for browser that prompts.** If the domain is not installable content, then the promise returns a `DOMException` of type 'AbortError'.
+When called on the same domain, the **`install` method will trigger/open the prompt for installation the same way that using `onbeforeinstallprompt` does right now for browser that prompts.** If there is an error with the installation, then the promise returns a `DOMException` of type 'AbortError'. 
 
 
 ## Proposed Solution
 
 ### The `navigator.install` method
 
-To install a web site/app, the site/app would use the promise-based method `navigator.install([<params>]);`. This method will:
+To install a web site/app, the site/app would use the promise-based method `navigator.install(id, install_url, [<params>])`. This method will:
 
 * Resolve when an installation was completed.
     * The success value will be an object that contains:
-     	*  `url`: url of the installed target.
+     	*  Computed `id`: computed `id` of the installed web content. This is the `id` that is passed on as a parameter to reference the installed content. 
 * Be rejected if the prompt is not shown or if the app installation did not complete. It'll reject with a [`DOMException`](https://developer.mozilla.org/en-US/docs/Web/API/DOMException) value of:
     * `AbortError`: The installation was not completed.
-    
+
  ```javascript
 /* simple example of using navigator.install */
 
@@ -88,21 +89,24 @@ const installApp = async () => {
 };
 
 ```
-
 ![Promises resolve/reject flow](./installPromises.png) 
 
 #### **Signatures of the `install` method (same-origin)**
 The same-origin part of the  Web Install API consists of the extension to the navigator interface with the install method. The install method can be used in several different ways. There is no difference in behaviour when this is called from a standalone window or a tab.
 
-1. `navigator.install()`: The method receives no parameters and tries to install the current origin as an app.
+1. `navigator.install(<params>)`: The method takes no parameters and tries to install the current document. Installation will proceed as long as the current document links to a manifest that includes a declared id.
+2. `navigator.install(id, install_url, [<params>])`: The method takes an id and install url and tries to install the web content at `install_url`. Installation will proceed if the following are true:
+   a. The target web app links to a manifest.
+   b. The target web app's manifest includes either an `id` or `start_url`.
+   c. The `id` parameter matches the declared or resolved id of the target web app.
 
-2. `navigator.install(<params>)`: The method receives an object with parameters that it can use to customize a same domain installation. These parameters alter how the app is installed and are defined in an object. More information about the parameters is found in the [Parameters](#parameters) subsection of this specification.
+Both calls can also receive an object with parameters that they can use to customize a same domain installation. These parameters alter how the app is installed and are defined in an object. More information about the parameters is found in the [Parameters](#parameters) subsection of this specification.
 
 #### **Parameters**
 
 The `navigator.install` call can receive an object with a set of parameters that specify different installation behaviours for the app.
 
-* **referral-info**: this parameter takes the form of an object that can have arbitrary information desired to be captured at the time of installation. 
+* **referral-info**: this parameter takes the form of an object that can have arbitrary information desired to be captured at the time of installation.
 
 #### **Installing the web app**
 
@@ -114,9 +118,9 @@ To install a same domain web site/app, the process is as follows:
    
 ## Relation with other web APIs 
 
-* **`navigator.install` and manifest file's `prefer_related_applications`:** When the `related_applications` and `prefer_related_applications` key/values are present in the manifest, the UA should try to handoff the install to the prefered catalog. If this is not possible then it fallback to a default UA install.
+* **`navigator.install` and manifest file's `prefer_related_applications`:** When the `related_applications` and `prefer_related_applications` key/values are present in the manifest, the UA should try to handoff the install to the preferred catalog. If this is not possible then it fallback to a default UA install.
 
-* **`navigator.install()` and getInstalledRelatedApps():** If a web app tries to install itself (same domain install) it can first use the `getInstalledRelatedApps()` to check if it is already install and hide the installation UI.
+* **`navigator.install` and getInstalledRelatedApps():** If a web app tries to install itself (same domain install) it can first use the `getInstalledRelatedApps()` to check if it is already installed and hide the installation UI.
 
 ```javascript
 
@@ -131,7 +135,7 @@ relatedApps.forEach((app) => {
 ## Installability criteria
 In order for an application/site to be installed, it must comply with *installability criteria*. **This criteria is entirely up to the UA**, can *vary depending on the installation target*, and can be optional. 
 
-Modern browsers allow for different degrees of installation of different types of content, ranging from traditional web sites all the way up to Progressive Web Apps. **The core functionality of the API is that it allows to install *anything* initiated with a user action**.  
+Modern browsers allow for different degrees of installation of different types of content, ranging from traditional web sites all the way up to Progressive Web Apps. **The core functionality of the same-origin version of the API is that it allows to install *any content*, as long as it is initiated with a user action**. Note that even though there are no installability requirements, the `navigator.install` method does require an id to install *any content*.
 
 A user agent might decide to have only the requirement of HTTPS to allow installation of a web site, or may need as well a manifest file and/or service worker to install a web app or might not require anything at all, allowing the user to install any content they wish.
 
@@ -141,9 +145,9 @@ A user agent might decide to have only the requirement of HTTPS to allow install
 
 * This API can only be invoked in a top-level navigable and be invoked from a [secure context](https://w3c.github.io/webappsec-secure-contexts/).
 
-* The biggest risk for the API is installation spamming. To minimize this behaviour, installing a PWA using the Web Install API requires a [user activation](https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event).  
+* The biggest risk for the API is installation spamming. To minimize this behaviour, installing content using the Web Install API requires a [user activation](https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event).  
 
-**For same-domain installs, the user gesture and the final installation confirmation (current default behaviour in the browser before installing an app) work together to minimize the risk of origins spamming the user for unrequested installations**. 
+**For same-domain installs, the user gesture and the final installation confirmation (current default behaviour in the browser before installing an app) work together to minimize the risk of origins spamming the user for unrequested installations**.
 
 ## Alternative Solutions
 
@@ -157,8 +161,10 @@ A user agent might decide to have only the requirement of HTTPS to allow install
 * Should we allow an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) to enable cancelling the installation if the process takes too long?
 
 ## Glossary
-* **installation origin**: the origin that initiates the call to the `install` method.
-* **installed origin**: the origin that is installed with the `install` method.
+* **Installation origin**: The origin that initiates the call to the `install` method.
+* **Installed origin**: The origin that is installed with the `install` method.
+* **Declared manifest id**: The id as it is declared in the manifest. See [MDN documentation](https://developer.mozilla.org/en-US/docs/Web/Manifest/id) for more info.
+* **Resolved manifest id**: The processed id after it is resolved against the `start_url`'s origin. Since the declared id is resolved against an origin, this will take the form of a url (e.g. "https://example.com/my_app"), although it may not point to a valid resource. See [W3 manifest spec](https://www.w3.org/TR/appmanifest/#id-member) for detailed parsing info.
 
 ## Acknowledgements
 
